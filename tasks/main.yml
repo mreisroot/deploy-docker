@@ -1,0 +1,68 @@
+---
+- name: "Create {{ apt_keyrings_dir }} directory if it doesn't exist"
+  ansible.builtin.file:
+    path: "{{ apt_keyrings_dir }}"
+    state: "directory"
+    mode: "0755"
+
+- name: "Add Docker GPG key to the system"
+  block:
+    - name: "Verify the existence of the GPG key"
+      ansible.builtin.stat:
+        path: "{{ apt_keyrings_dir }}/docker.gpg"
+      register: "docker_gpg"
+
+    - name: "Download Docker GPG key"
+      ansible.builtin.get_url:
+        url: "https://download.docker.com/linux/debian/gpg"
+        dest: "/tmp/docker-gpg.asc"
+
+    - name: "De-armor GPG key"
+      ansible.builtin.shell:
+        cmd: "gpg -o {{ apt_keyrings_dir }}/docker.gpg --dearmor /tmp/docker-gpg.asc"
+      when: "not docker_gpg.stat.exists"
+
+    - name: "Set the right permissions for the gpg key file"
+      ansible.builtin.file:
+        path: "{{ apt_keyrings_dir }}/docker.gpg"
+        state: "file"
+        mode: "a+r"
+
+- name: "Install Docker"
+  block:
+    - name: "Add Docker apt repository"
+      ansible.builtin.apt_repository:
+        repo: "deb [arch=amd64 signed-by={{ apt_keyrings_dir }}/docker.gpg] https://download.docker.com/linux/debian {{ ansible_distribution_release }} stable"
+        state: "present"
+    
+    - name: "Update apt cache"
+      ansible.builtin.apt:
+        update_cache: true
+    
+    - name: "Install the Docker packages"
+      ansible.builtin.apt:
+        name: "{{ docker_packages }}"
+        state: "present"
+    
+    - name: "Install Pip and Python3's YAML and JSON Libraries"
+      ansible.builtin.apt:
+        name: "{{ python_libs }}"
+        state: "present"
+    
+    - name: "Install Python Libraries to enable Ansible's communication with Docker"
+      ansible.builtin.pip:
+        name: "{{ docker_python_libs }}"
+        state: "present"
+
+- name: "Manage the Docker service"
+  block:
+    - name: "Enable the Docker service"
+      ansible.builtin.service:
+        name: "docker"
+        enabled: true
+    
+    - name: "Restart the Docker service"
+      ansible.builtin.service:
+        name: "docker"
+        state: "restarted"
+...
